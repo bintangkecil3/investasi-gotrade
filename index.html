@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GoLive Tracker - Rebalancing & Journal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f8fafc; }
+        .glass-card { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border: 1px solid #e2e8f0; }
+        .custom-scroll::-webkit-scrollbar { width: 4px; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+    </style>
+</head>
+<body class="text-slate-900 pb-12">
+
+    <nav class="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-50">
+        <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <div class="bg-indigo-600 p-2 rounded-xl text-white">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
+                </div>
+                <span class="font-bold text-lg tracking-tight">GoLive <span class="text-indigo-600">Pro</span></span>
+            </div>
+            <div id="marketStatus" class="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                Memuat Status Bursa...
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-6xl mx-auto px-4 py-8 space-y-8">
+        
+        <!-- API and Capital Input -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="md:col-span-2 glass-card p-6 rounded-3xl shadow-sm">
+                <label class="block text-xs font-bold text-slate-400 uppercase mb-3">Finnhub API Key</label>
+                <div class="flex gap-3">
+                    <input type="password" id="apiKey" placeholder="Masukkan API Key Anda..." class="flex-grow bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm">
+                    <button id="updateBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-8 py-3 rounded-2xl transition-all active:scale-95 shadow-lg shadow-indigo-200">Update</button>
+                </div>
+            </div>
+            <div class="glass-card p-6 rounded-3xl shadow-sm">
+                <label class="block text-xs font-bold text-slate-400 uppercase mb-3">Modal Awal (IDR)</label>
+                <input type="number" id="capitalInput" value="100000000" class="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3 focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-lg">
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <div class="lg:col-span-8 space-y-8">
+                <!-- Summary Stats -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
+                        <p class="text-xs font-bold text-slate-400 uppercase">Ekuitas Real-Time</p>
+                        <h2 class="text-4xl font-extrabold text-slate-900 mt-2" id="currentTotal">Rp --</h2>
+                        <div id="totalChange" class="mt-3 text-sm font-bold">--</div>
+                    </div>
+                    <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
+                        <p class="text-xs font-bold text-slate-400 uppercase">Kurs USD/IDR</p>
+                        <h2 class="text-4xl font-extrabold text-slate-900 mt-2" id="fxRate">Rp --</h2>
+                        <p class="text-[10px] text-indigo-500 font-bold mt-3 tracking-widest">LIVE FOREX FEED</p>
+                    </div>
+                </div>
+
+                <!-- Charts -->
+                <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm min-h-[400px]">
+                    <h3 class="font-bold text-slate-800 mb-6 flex items-center justify-between">
+                        Distribusi Portofolio
+                        <span class="text-xs font-normal text-slate-400">Target vs Realitas</span>
+                    </h3>
+                    <div class="h-[300px]">
+                        <canvas id="liveChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Journal Table -->
+                <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="p-6 border-b border-slate-100 flex justify-between items-center">
+                        <h3 class="font-bold text-slate-800">Jurnal Transaksi (Histori)</h3>
+                        <button onclick="clearJournal()" class="text-xs text-red-500 font-bold hover:underline">Hapus Semua</button>
+                    </div>
+                    <div class="overflow-x-auto custom-scroll max-h-[300px]">
+                        <table class="w-full text-left text-sm">
+                            <thead class="bg-slate-50 text-slate-400 font-bold uppercase text-[10px]">
+                                <tr>
+                                    <th class="px-6 py-4">Tanggal</th>
+                                    <th class="px-6 py-4">Aksi</th>
+                                    <th class="px-6 py-4">Aset</th>
+                                    <th class="px-6 py-4 text-right">Nominal</th>
+                                </tr>
+                            </thead>
+                            <tbody id="journalBody">
+                                <!-- Journal history will appear here -->
+                            </tbody>
+                        </table>
+                        <div id="emptyJournal" class="p-12 text-center text-slate-400 italic">Belum ada catatan rebalancing.</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="lg:col-span-4 space-y-8">
+                <!-- Daily Commands -->
+                <div class="bg-slate-900 text-white p-8 rounded-[2rem] shadow-2xl relative overflow-hidden">
+                    <div class="relative z-10">
+                        <h3 class="font-bold text-xl mb-6 flex items-center gap-3">
+                            <span class="bg-indigo-500 p-2 rounded-lg">⚡</span>
+                            Perintah Rebalance
+                        </h3>
+                        <div id="rebalanceList" class="space-y-4 min-h-[200px]">
+                            <p class="text-sm opacity-40 text-center py-12">Belum ada data terbaru.</p>
+                        </div>
+                        <button id="logActionBtn" style="display:none;" onclick="logTransactions()" class="w-full mt-6 bg-white text-slate-900 font-bold py-4 rounded-2xl hover:bg-indigo-50 transition-all active:scale-95">
+                            Catat ke Jurnal
+                        </button>
+                    </div>
+                    <div class="absolute -right-12 -bottom-12 w-48 h-48 bg-indigo-500/10 rounded-full blur-3xl"></div>
+                </div>
+
+                <!-- Drift Monitor -->
+                <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                    <h4 class="text-xs font-bold text-slate-400 uppercase mb-4 tracking-widest">Penyimpangan Aset</h4>
+                    <div id="assetList" class="space-y-4"></div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const formatIDR = (n) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(n);
+        
+        let portfolio = [
+            { id: 'VOO', name: 'S&P 500', target: 0.30, color: '#4f46e5' },
+            { id: 'QQQ', name: 'Nasdaq', target: 0.20, color: '#6366f1' },
+            { id: 'SCHD', name: 'Dividen', target: 0.15, color: '#818cf8' },
+            { id: 'AAPL', name: 'Apple', target: 0.10, color: '#1e293b' },
+            { id: 'MSFT', name: 'Microsoft', target: 0.10, color: '#334155' },
+            { id: 'GOOGL', name: 'Google', target: 0.05, color: '#475569' },
+            { id: 'AMZN', name: 'Amazon', target: 0.05, color: '#64748b' },
+            { id: 'BRK.B', name: 'Berkshire', target: 0.05, color: '#94a3b8' }
+        ];
+
+        let chart;
+        let currentCommands = [];
+
+        window.onload = () => {
+            const ctx = document.getElementById('liveChart').getContext('2d');
+            chart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: portfolio.map(a => a.id),
+                    datasets: [
+                        { label: 'Kondisi Saat Ini (%)', data: portfolio.map(() => 0), backgroundColor: '#6366f1', borderRadius: 8 },
+                        { label: 'Target Ideal (%)', data: portfolio.map(a => a.target * 100), backgroundColor: '#f1f5f9', borderRadius: 8 }
+                    ]
+                },
+                options: { 
+                    responsive: true, 
+                    maintainAspectRatio: false, 
+                    plugins: { legend: { display: false } }, 
+                    scales: { y: { beginAtZero: true, max: 45 } } 
+                }
+            });
+            renderJournal();
+            checkMarket();
+        };
+
+        async function updateData() {
+            const key = document.getElementById('apiKey').value;
+            const capital = parseFloat(document.getElementById('capitalInput').value);
+            if (!key) { alert("Silakan masukkan Finnhub API Key Anda."); return; }
+
+            try {
+                const fxRes = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
+                const fxData = await fxRes.json();
+                const rate = fxData.rates.IDR;
+                document.getElementById('fxRate').innerText = formatIDR(rate);
+
+                let totalValue = 0;
+                const results = await Promise.all(portfolio.map(a => 
+                    fetch(`https://finnhub.io/api/v1/quote?symbol=${a.id}&token=${key}`).then(r => r.json())
+                ));
+                
+                portfolio.forEach((asset, i) => {
+                    const priceChangeRatio = results[i].c / (results[i].pc || results[i].c);
+                    asset.currentVal = (capital * asset.target) * priceChangeRatio;
+                    totalValue += asset.currentVal;
+                });
+
+                renderUI(totalValue, capital);
+            } catch (e) { alert("Error mengambil data. Pastikan API Key valid dan koneksi internet stabil."); }
+        }
+
+        function renderUI(total, initial) {
+            document.getElementById('currentTotal').innerText = formatIDR(total);
+            const diff = total - initial;
+            document.getElementById('totalChange').innerHTML = `<span class="${diff >= 0 ? 'text-emerald-600' : 'text-rose-600'}">${diff >= 0 ? '▲' : '▼'} ${formatIDR(Math.abs(diff))} (${((diff/initial)*100).toFixed(2)}%)</span>`;
+
+            chart.data.datasets[0].data = portfolio.map(a => (a.currentVal / total) * 100);
+            chart.update();
+
+            const rebList = document.getElementById('rebalanceList');
+            const assetList = document.getElementById('assetList');
+            rebList.innerHTML = '';
+            assetList.innerHTML = '';
+            currentCommands = [];
+
+            portfolio.forEach(a => {
+                const weight = (a.currentVal / total);
+                const drift = ((weight - a.target) / a.target) * 100;
+
+                assetList.innerHTML += `
+                    <div class="flex justify-between items-center text-sm">
+                        <span class="font-bold text-slate-700">${a.id}</span>
+                        <div class="text-right">
+                            <p class="font-bold">${(weight*100).toFixed(1)}%</p>
+                            <p class="text-[10px] ${Math.abs(drift) > 2 ? 'text-orange-500 font-bold' : 'text-slate-400'}">${drift > 0 ? '+' : ''}${drift.toFixed(1)}% drift</p>
+                        </div>
+                    </div>`;
+
+                if (Math.abs(drift) > 2.5) {
+                    const amount = Math.abs(a.currentVal - (total * a.target));
+                    const isSell = drift > 0;
+                    currentCommands.push({ asset: a.id, action: isSell ? 'JUAL' : 'BELI', amount: amount });
+                    
+                    rebList.innerHTML += `
+                        <div class="bg-white/10 p-5 rounded-2xl border border-white/10 flex justify-between items-center">
+                            <div>
+                                <p class="text-[10px] font-bold opacity-60 uppercase">${isSell ? 'Take Profit' : 'Serok Bawah'}</p>
+                                <p class="font-bold text-lg">${isSell ? 'Jual' : 'Beli'} ${a.id}</p>
+                            </div>
+                            <p class="text-right font-black text-indigo-300">${formatIDR(amount)}</p>
+                        </div>`;
+                }
+            });
+
+            if (currentCommands.length === 0) {
+                rebList.innerHTML = '<p class="text-center py-12 opacity-40 italic">Portofolio Anda sudah sangat seimbang. Nikmati kopi Anda! ☕</p>';
+                document.getElementById('logActionBtn').style.display = 'none';
+            } else {
+                document.getElementById('logActionBtn').style.display = 'block';
+            }
+        }
+
+        function logTransactions() {
+            let journal = JSON.parse(localStorage.getItem('gotrade_journal') || '[]');
+            const now = new Date().toLocaleString('id-ID');
+            currentCommands.forEach(cmd => {
+                journal.unshift({ date: now, action: cmd.action, asset: cmd.asset, amount: cmd.amount });
+            });
+            localStorage.setItem('gotrade_journal', JSON.stringify(journal));
+            renderJournal();
+        }
+
+        function renderJournal() {
+            const journal = JSON.parse(localStorage.getItem('gotrade_journal') || '[]');
+            const body = document.getElementById('journalBody');
+            const empty = document.getElementById('emptyJournal');
+            body.innerHTML = '';
+            if (journal.length === 0) {
+                empty.style.display = 'block';
+                return;
+            }
+            empty.style.display = 'none';
+            journal.forEach(item => {
+                body.innerHTML += `
+                    <tr class="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
+                        <td class="px-6 py-4 text-slate-500 text-[11px]">${item.date}</td>
+                        <td class="px-6 py-4"><span class="px-2 py-1 rounded-md text-[10px] font-bold ${item.action === 'BELI' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}">${item.action}</span></td>
+                        <td class="px-6 py-4 font-bold text-slate-700">${item.asset}</td>
+                        <td class="px-6 py-4 text-right font-bold">${formatIDR(item.amount)}</td>
+                    </tr>`;
+            });
+        }
+
+        function clearJournal() {
+            if (confirm("Hapus semua catatan histori?")) {
+                localStorage.removeItem('gotrade_journal');
+                renderJournal();
+            }
+        }
+
+        function checkMarket() {
+            const h = new Date().getUTCHours();
+            const d = new Date().getUTCDay();
+            const isOpen = (d >= 1 && d <= 5) && (h >= 13 && h <= 21); // Simplified US Hours
+            const el = document.getElementById('marketStatus');
+            el.innerHTML = isOpen ? `<span class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> Market Open</span>` : `<span class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-slate-300"></span> Market Closed</span>`;
+        }
+
+        document.getElementById('updateBtn').onclick = updateData;
+        setInterval(checkMarket, 60000);
+    </script>
+</body>
+</html>
